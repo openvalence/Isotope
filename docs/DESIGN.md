@@ -104,7 +104,10 @@ and beacon RFC):
 | `wifi_channel` u8 | 1 | 2.4 GHz channels overlap; a beacon sent on 6 is often heard while tuned to 5 or 7. This field names the true one. |
 | `flags` u8 | 1 | bit0 `pairing_window_open` (existing meaning, §13.7); bit1 `datagram_estop` (RFC-053 2b); bit2 `estop_latched` (proposal: every accessory holds safe while set); bit3 `going_away` (hub goodbye, §5); bits 4-7 zero |
 
-Total 30 B of 250. The budget is checked on the wire in validation (g).
+Total 30 B of 250 (§16). RFC-075 item 3 pins the same 22-byte payload in a
+different field order and flag-bit assignment (bit2 `accessory_host`, bit3
+`estop_latched`; the goodbye is GOODBYE, not a bit); the RFC wins once
+accepted, and the size is identical either way.
 
 ## 5. The accessory deadman
 
@@ -204,11 +207,9 @@ readback plus an INTENT writer at mirrored ids, CHANNEL-GRID.md's mirror
 rule). That also matches Phosphor's ruling that a control is one channel
 field.
 
-**The declaration does not fit one frame.** At roughly 26 B per channel, 128
-channels are about 3.3 KB: some 14 frames of 242 B. It rides application
-chunking the way blobs do (§8.4, 192 B chunks), never §5.6 fragmentation,
-which is for control frames only. The real encoded size is measured in
-validation (g).
+**The declaration does not fit one frame.** It rides application chunking
+the way blobs do (§8.4, 192 B chunks), never §5.6 fragmentation, which is
+for control frames only. Worst case it is about 15 KB in 79 chunks (§16).
 
 **What the hub stores** (flash, unpacked to PSRAM at boot, ruling): the
 declaration verbatim, the durable-id to MAC binding, the assigned slice,
@@ -476,7 +477,7 @@ pin, not an Isotope device); an accessory commanding machine motion.
 
 0. **CANON FLAG -- the hardware SPEC says PAIR held at power-on opens AP
    config mode; the 2026-09-26 rulings forbid softAP.**
-   Source A: `../hardware/flagship/SPEC.md:66` (2026-09-23 row): "SW2 PAIR
+   Source A: `../Hardware/flagship/SPEC.md:66` (2026-09-23 row): "SW2 PAIR
    (hold = pair, held at power-on = AP config mode, press TBD)".
    Source B: the 2026-09-26 rulings: config mode is "pairing window open, BLE
    advertising with the window flag, no WiFi", and "No softAP ever"
@@ -515,3 +516,53 @@ pin, not an Isotope device); an accessory commanding machine motion.
 13. **Deadman range:** fixed 5 s, or declared per accessory within a clamp?
     (§5)
 14. **License:** operator decision, not chosen.
+
+## 16. Frame budget (paper, iso-3ph.7)
+
+Computed by `tools/frame_budget.py` in the encodings the drafts specify:
+the BEACON payload of RFC-075 item 3, and a declaration that is a §8.1
+catalog (CDDL, Appendix C) in the §5.3 deterministic profile per RFC-076
+item 5. Paper only; the wire capture and the broadcast-peer count are
+bench work on `iso-3ph.7`.
+
+| Frame | Bytes | Fits 250? |
+|---|---|---|
+| BEACON: 8 header + 22 payload | 30 | yes, 220 spare |
+| BLOB_CHUNK: 8 header + 14 chunk header + 192 data | 214 | yes |
+| JOIN_REQ / JOIN_REPLY (RFC-076 items 3, 4) | 60 / 26 | yes |
+
+**Worst-case declaration entry.** One channel, every string at its CDDL
+maximum (entry name 32 B, field name 24 B, unit 8 B), f32 min, max and
+`safe`, `category` set, no `desc`:
+
+| Entry | Bytes |
+|---|---|
+| actuator (INTENT, one schema field with `safe`) | 117 |
+| readout (STATE, one layout field with scale, min, max) | 115 |
+| actuator as a mirrored STATE readback plus INTENT writer (§8) | 232 |
+| accessory-status at relative id `0x01` (RFC-078 item 1) | 96 |
+
+Text is 69 of the actuator's 117 bytes; short keys and units shrink it most.
+
+**128 channels, all actuators:** 2 (array head) + 96 (status) + 128 x 117,
+less 22 for the relative ids below 24 that encode in one byte = **15,052 B**,
+116.8 B per channel. That is **79 chunks at 192 B** (79 BLOB_CHUNK frames of
+214 B), or 63 frames at 242 B if it could ride raw payloads, which it may
+not. The legal maximum under RFC-076 item 1 (126 own ids) is 14,818 B in 78
+chunks. The §8.4 bound of `frag_reassembly_timeout_ms` (5 s) for the whole
+transfer needs about 16 chunks a second, far under ESP-NOW's frame rate.
+
+**Verdict.** The beacon fits with room for tail extension. A declaration
+does not fit one frame: one worst-case actuator beside the status entry
+(2 + 96 + 117 = 215 B) is the most a single 242 B payload holds. So the
+declaration rides blob chunking, namespace 0, exactly as RFC-076 item 5
+already says, and RFC-075 item 6's ban on §5.6 fragmentation costs nothing.
+Two consequences:
+
+- `accessory_declaration_max_bytes` (RFC-076's new limit) needs a value
+  near 15 KB to admit a full slice of worst-case channels; a hub holding 19
+  of them stores about 286 KB of declarations, which is PSRAM, not SRAM.
+- **The slice holds 126 channels, not 128.** RFC-076 item 1 reserves
+  relative ids `0x00` and `0x01`, and §8's mirrored-pair proposal spends two
+  ids per actuator, which halves it to 63. §8's "local index (0-127)" and
+  "128 stays the Isotope-side ceiling" predate the draft; §15 Q3 owns it.

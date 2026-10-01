@@ -34,7 +34,7 @@ the radio numbers it depends on are measured on dev boards.
 | [`../Valence`](../Valence) | the protocol: SPEC, registry, conformance | **read-only.** Every wire number and behavior comes from there. What Isotope needs and the spec lacks becomes an RFC there first. |
 | [`../Nucleus`](../Nucleus) | the reference hub (OSSM Flagship firmware, P4 + C6) | the other end of every accessory link: beacon, join, declaration store, relationships. Hub-side work is filed on Nucleus's own board. |
 | [`../Phosphor`](../Phosphor) | the reference client | renders accessory channels like any catalog channel; authors hub-side names and relationships. Never talks to an accessory directly. |
-| [`../hardware`](../hardware) | board designs | the Flagship's C6 radio and the PWM pump header. |
+| [`../Hardware`](../Hardware) | board designs | the Flagship's C6 radio and the PWM pump header. |
 
 All sit beside this repo in the same parent directory.
 
