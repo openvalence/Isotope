@@ -73,11 +73,12 @@ and every accessory talks only to it.
 - **No accessory talks to Phosphor.** Phosphor stays a single-session client
   of the hub and sees accessory channels as ordinary catalog channels.
 - **No accessory talks to another accessory**, and nothing is routed.
-- **Peer ceiling 20, typical 3.** ESP-IDF: "maximum number of paired devices
-  is 20" ([ESP-IDF ESP-NOW, ESP32-C6](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/api-reference/network/esp_now.html)).
-  The broadcast address must itself be added as a peer before sending
-  broadcast data (same page); whether it counts against the 20 is measured
-  in validation (g), not assumed. If it does, the ceiling is 19 accessories.
+- **At most 19 accessories, typical 3.** ESP-IDF: "maximum number of paired
+  devices is 20" ([ESP-IDF ESP-NOW, ESP32-C6](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/api-reference/network/esp_now.html)),
+  and the broadcast entry the beacon needs takes one, so a host addresses at
+  most 19 accessories by unicast, fewer if a client binding shares the list
+  (SPEC §13.3.1 item 8). The catalog binds first: the Flagship is built for
+  6 worst-case accessories (§16).
 - **Payload 250 B.** ESP-NOW v2 carries 1,470 B, but a v1 receiver only takes
   v2 packets of 250 B or less (same page). Isotope stays at 250: it is the
   spec floor (§13.1) and keeps mixed-version fleets working.
@@ -195,21 +196,23 @@ deadman are baked in at flash time and declared to the hub on join as a
 mini-catalog. Only hub-side things (names, relationships) are authored from
 Phosphor.
 
-Per channel, the declaration carries: local index (0-127), kind (actuator,
+Per channel, the declaration carries: relative id (`0x02`-`0x1F`, 30 at
+most, SPEC §8.10), kind (actuator,
 readout, event, estop button), `packed_field_types` value type, unit, scale,
 min/max, safe value (actuators, REQUIRED), max rate. Per accessory: durable
 id, model string, firmware version, deadman, declaration etag.
 
-**Why it cannot be one STATE channel.** 128 `f32` values are 512 B; the
-242 B STATE-fit rule (§9.1, §13.1) forbids it. Proposal: one Isotope channel
-becomes one catalog channel (a readout is a STATE; an actuator is a STATE
-readback plus an INTENT writer at mirrored ids, CHANNEL-GRID.md's mirror
-rule). That also matches Phosphor's ruling that a control is one channel
-field.
+**One Isotope channel is one catalog entry.** The declaration IS the
+accessory's catalog (SPEC §8.10), so a readout is a STATE entry and an
+actuator an INTENT entry. Proposal: an actuator also gets a STATE readback
+at the next relative id, because a client other than the writer learns an
+applied value only from STATE (SPEC §9.3); that spends two ids per actuator,
+so a slice holds 15 mirrored actuators. That also matches Phosphor's ruling
+that a control is one channel field.
 
 **The declaration does not fit one frame.** It rides application chunking
 the way blobs do (§8.4, 192 B chunks), never §5.6 fragmentation, which is
-for control frames only. Worst case it is about 15 KB in 79 chunks (§16).
+for control frames only. Worst case it is 3,592 B in 19 chunks (§16).
 
 **What the hub stores** (flash, unpacked to PSRAM at boot, ruling): the
 declaration verbatim, the durable-id to MAC binding, the assigned slice,
@@ -230,30 +233,25 @@ and poke accessory actuators within their declared ranges; it cannot move
 the machine. An accessory CAN always stop the machine (RFC-053: an ESTOP
 frame from any peer), which is the safe direction.
 
-**The accessory channel budget is a declared, hub-advertised number, not
-128.** The ruling's "up to ~128 channels per accessory" breaks the
-reference hub today. Its catalog is a fixed-capacity instance,
-`Catalog32 = BasicCatalog<48, 200, 160, 192, 4>` (48 entries, 200 layout
-fields; Valence `lib/valence/include/valence/channel/catalog.hpp:880`),
-and Nucleus already uses 189 of the 200 layout fields
-(`flagship_p4/src/hub/ValenceCatalog.h:1691`). Raising those is a Valence
-library change, riding the RFC ritual, not an Isotope decision. So
-(proposal): the hub ADVERTISES how many accessory channels it has left (in
-the probe reply and the join answer); an accessory whose declaration does
-not fit is refused with a reason and the numbers (§4.5: every refusal is
-answered), never half-admitted. 128 stays the Isotope-side ceiling on a
-single declaration; what a given hub can take is that hub's number. The
-ruling on this is `iso-yg8` and §15 Q3.
+**The accessory channel budget is hub-advertised** (ruled 2026-10-01,
+RFC-077; `iso-yg8`). An accessory declares at most 30 own channels; what a
+given hub can take is that hub's advertised capacity. The `accessories-roster`
+tail carries the per-accessory entry budget (at most 31 entries) and the free
+entries, layout fields, schema fields and catalog bytes; a declaration past
+either budget is refused JOIN_REPLY `capacity` and reported on
+`pairing-events` as `accessory_refused`, never half-admitted (SPEC §8.10).
+The reference library's catalog capacities are a hub build parameter
+(RFC-077 item 8). The Flagship is built for 6 worst-case accessories, bound
+by the 256-entry client floor, not by the radio (Nucleus
+`docs/accessory-store-sizing.md`).
 
-**Channel id space (§15 Q3).** 20 accessories x 128 slots is 2,560 ids per
-class band, times two for mirrored actuators. The device range per class
-band under the 0xCDFM grid is 4,096 (CHANNEL-GRID.md); domain 3 is reserved
-"auxiliary" and domains 8-F are parked for multi-axis. A 128-slot slice is
-half a domain, so the free domains hold 18 slices only if multi-axis never
-claims them. `0x8000-0xFFFF` is reserved, and SPEC Appendix D relies on
-that range never being allocated. `catalog_max_entries` (256) is a floor,
-not a cap, but a full fleet is 10-20 times it. The accessory join and
-declaration RFC must pick the range and a hub-wide budget.
+**Channel id space** (ruled 2026-10-01, RFC-076). The user space
+`0x8000`-`0xBFFF` holds 512 slices of `accessory_slice_ids` (32) ids:
+`r = 0x00` is the session-scoped channel BEACON, ACKMASK and GOODBYE ride,
+`r = 0x01` the registered accessory-status STATE, `r = 0x02`-`0x1F` the
+accessory's own. The accessory speaks relative ids and never learns its
+slice; a slice is sticky across reboots and declaration replacement and is
+never reused after a forget (SPEC §8.10).
 
 ## 9. Relationships
 
@@ -369,8 +367,9 @@ channels:
 ```
 
 Generator refusals (the config's own lint): an actuator with no `safe`;
-`hold` on a non-position actuator; a range outside its type; more than 128
-channels; a declaration over its size budget; two channels on one pin.
+`hold` on a non-position actuator; a range outside its type; more than 30
+channels (15 mirrored actuators); a declaration over
+`accessory_declaration_max_bytes` (4,096 B); two channels on one pin.
 
 ## 11. Generator and web flasher
 
@@ -492,11 +491,10 @@ pin, not an Isotope device); an accessory commanding machine motion.
    validation (b) has measured passive against active.
 2. **ESTOP fan-out.** Does a latched machine e-stop put every accessory in
    its safe state (the `estop_latched` beacon bit)? (§4)
-3. **Accessory channel budget and id range.** The reference hub's catalog
-   holds 48 entries and 200 layout fields (189 used), so "~128 channels per
-   accessory" is a compatibility break. Ratify the declared, hub-advertised
-   budget (§8), decide whether the Valence catalog capacity grows (a
-   library change, via RFC), and pick the id range. (§8)
+3. **Accessory channel budget and id range.** ANSWERED 2026-10-01 (RFC-076,
+   RFC-077; SPEC §8.10): the budget is declared and hub-advertised, the
+   library catalog capacity is a hub build parameter, and ids are 32-id
+   slices of the user space, 30 own channels per accessory. (§8, §16)
 4. **Default labels.** Does the declaration carry each channel's config
    `key` as a default display name, or is a fresh accessory shown as
    "channel N" until named in Phosphor? (§8)
@@ -517,52 +515,58 @@ pin, not an Isotope device); an accessory commanding machine motion.
     (§5)
 14. **License:** operator decision, not chosen.
 
-## 16. Frame budget (paper, iso-3ph.7)
+## 16. Frame budget (paper, iso-3ph.8)
 
-Computed by `tools/frame_budget.py` in the encodings the drafts specify:
-the BEACON payload of RFC-075 item 3, and a declaration that is a §8.1
-catalog (CDDL, Appendix C) in the §5.3 deterministic profile per RFC-076
-item 5. Paper only; the wire capture and the broadcast-peer count are
-bench work on `iso-3ph.7`.
+`tools/frame_budget.py` byte-counts the spoke frames as SPEC §13.3.1 and
+§13.3.2 pin them, and a worst-case declaration as §8.10 defines it: a §8.1
+catalog (CDDL, Appendix C) in the §5.3 deterministic profile, every layout
+field carrying `size` (key 18) as the reference encoder emits it (§5.4),
+every INTENT field carrying `safe` (key 25). A worst-case channel is one
+field with every string at its CDDL maximum (entry name 32 B, field name
+24 B, unit 8 B), f32 min, max and scale or `safe`, `category` set, no
+`desc`, at a relative id of `0x18` or more (two CBOR bytes). Its output at
+Valence 9dd395d, verbatim:
 
-| Frame | Bytes | Fits 250? |
-|---|---|---|
-| BEACON: 8 header + 22 payload | 30 | yes, 220 spare |
-| BLOB_CHUNK: 8 header + 14 chunk header + 192 data | 214 | yes |
-| JOIN_REQ / JOIN_REPLY (RFC-076 items 3, 4) | 60 / 26 | yes |
+```text
+BEACON: 8 + 22 = 30 B of 250
+JOIN_REQ: 8 + 52 = 60 B of 250
+JOIN_REPLY: 8 + 18 = 26 B of 250
+BLOB_CHUNK: 8 + 14 + 192 = 214 B
+entries: status (r=0x01) 102 B; at r>=0x18 readout 117 B, actuator 117 B, mirrored pair 234 B
+30 actuators: 3592 B, 19 chunks at 192, 15 frames at 242; in the hub catalog 3646 B
+30 readouts: 3592 B, 19 chunks at 192, 15 frames at 242; in the hub catalog 3646 B
+15 mirrored pairs: 3592 B, 19 chunks at 192, 15 frames at 242; in the hub catalog 3646 B
+one 242 B payload holds the status entry and 1 worst-case channel; one 192 B chunk holds 1 entry
+status + 1 worst-case actuator: 219 B, 2 chunks at 192
+hub PSRAM per accessory (Nucleus budget): pools 7612 B + encode scratch 6400 B = 14012 B
+hub flash per accessory: declaration A/B 8192 B at the ceiling, 7184 B at the worst case
+```
 
-**Worst-case declaration entry.** One channel, every string at its CDDL
-maximum (entry name 32 B, field name 24 B, unit 8 B), f32 min, max and
-`safe`, `category` set, no `desc`:
-
-| Entry | Bytes |
-|---|---|
-| actuator (INTENT, one schema field with `safe`) | 117 |
-| readout (STATE, one layout field with scale, min, max) | 115 |
-| actuator as a mirrored STATE readback plus INTENT writer (§8) | 232 |
-| accessory-status at relative id `0x01` (RFC-078 item 1) | 96 |
-
-Text is 69 of the actuator's 117 bytes; short keys and units shrink it most.
-
-**128 channels, all actuators:** 2 (array head) + 96 (status) + 128 x 117,
-less 22 for the relative ids below 24 that encode in one byte = **15,052 B**,
-116.8 B per channel. That is **79 chunks at 192 B** (79 BLOB_CHUNK frames of
-214 B), or 63 frames at 242 B if it could ride raw payloads, which it may
-not. The legal maximum under RFC-076 item 1 (126 own ids) is 14,818 B in 78
-chunks. The §8.4 bound of `frag_reassembly_timeout_ms` (5 s) for the whole
-transfer needs about 16 chunks a second, far under ESP-NOW's frame rate.
-
-**Verdict.** The beacon fits with room for tail extension. A declaration
-does not fit one frame: one worst-case actuator beside the status entry
-(2 + 96 + 117 = 215 B) is the most a single 242 B payload holds. So the
-declaration rides blob chunking, namespace 0, exactly as RFC-076 item 5
-already says, and RFC-075 item 6's ban on §5.6 fragmentation costs nothing.
-Two consequences:
-
-- `accessory_declaration_max_bytes` (RFC-076's new limit) needs a value
-  near 15 KB to admit a full slice of worst-case channels; a hub holding 19
-  of them stores about 286 KB of declarations, which is PSRAM, not SRAM.
-- **The slice holds 126 channels, not 128.** RFC-076 item 1 reserves
-  relative ids `0x00` and `0x01`, and §8's mirrored-pair proposal spends two
-  ids per actuator, which halves it to 63. §8's "local index (0-127)" and
-  "128 stays the Isotope-side ceiling" predate the draft; §15 Q3 owns it.
+- **The declaration is 3,592 B in 19 chunks of 192 B**, 116.3 B per channel
+  beside the 102 B status entry, under `accessory_declaration_max_bytes`
+  (4,096 B) with 504 B spare. With `size` counted, a readout and an actuator
+  cost the same 117 B, so the mix of the 30 does not move the total. Text
+  (name, field name, unit) is 69 of the 117 B; short keys and units shrink it
+  most.
+- **It rides blob chunking, never one frame.** One 242 B payload holds the
+  status entry and one worst-case channel, so a declaration is the
+  accessory's blob namespace 0 (SPEC §8.10, §13.3.2), which §13.3.1 item 1's
+  ban on §5.6 fragmentation already requires. 19 chunks inside
+  `frag_reassembly_timeout_ms` (5 s) is 4 chunks a second. The 15 frames at
+  242 B are for comparison only: a declaration may not ride raw payloads.
+- **In the hub catalog it is 3,646 B**: the host re-encodes relative ids as
+  absolute ones (`0x8000` and up, three CBOR bytes each), inside the 5,120 B
+  per-accessory encoded-catalog budget Nucleus sized for.
+- **Hub cost per accessory: about 14.0 KB of PSRAM and 8 KiB of flash**,
+  reconciled with Nucleus `docs/accessory-store-sizing.md` (its home): pools
+  of 31 entries, 33 layout, 30 schema and 64 labels at the 32-bit slot sizes
+  are 7,612 B, the encode-scratch share is 5,120 B / 0.8 = 6,400 B, and the
+  declaration kept A/B at its ceiling is 8,192 B of flash (7,184 B at this
+  worst case). Nucleus's totals for 6 accessories (~87 KB PSRAM, 48 KiB
+  flash) agree once its scratch round-up to 72 KiB is counted. Every
+  worst-case shape fits those pools: 30 actuators use 31 entries, 3 layout
+  and 30 schema fields; 30 readouts 31, 33 and 0; 15 mirrored pairs 31, 18
+  and 15.
+- **Spoke control frames all fit:** BEACON 30 B, JOIN_REQ 60 B, JOIN_REPLY
+  26 B, BLOB_CHUNK 214 B, each under 250. Paper only: the beacon on the wire
+  is iso-3ph.1's first measurement.
