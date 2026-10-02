@@ -1,12 +1,12 @@
 # Isotope: design
 
 > **Nothing here is built.** Home of Isotope's design rulings (C-1: this is
-> that fact's one home). The rulings are the operator's of 2026-09-26; where
-> this document goes beyond them it says "proposal" and the question is in
-> §15. Wire truth stays in the Valence repo; every protocol claim below cites
-> a SPEC section or names the RFC that must land first. Those RFCs are named
-> by title (§14), not number: they are being drafted and have none yet.
-> Status and measured numbers live on the dev board (`bd`, prefix `iso`).
+> that fact's one home). The rulings are the operator's of 2026-09-26 and the
+> Valence RFC rulings of 2026-10-01 (§14), now landed in the spec; where this
+> document goes beyond them it says "proposal" and the question is in §15.
+> Wire truth stays in the Valence repo, read-only from here; every protocol
+> claim below cites a SPEC section at Valence 9dd395d. Status and measured
+> numbers live on the dev board (`bd`, prefix `iso`).
 
 ## 1. What Isotope is
 
@@ -24,46 +24,35 @@ Three artifacts, built in this order and no other:
 3. **Visual builder.** A blueprint-style editor over the config. It emits
    the same config and never has a capability the config lacks.
 
-## 2. Where Valence stands today, and what it must learn
+## 2. What the spec gives an accessory
 
-What the spec already has:
+The 2026-09-26 rulings went to the Valence queue as RFC-075 to RFC-079 and
+landed on 2026-10-01 (§14). What Isotope builds against:
 
-| Fact | Where |
+| Fact | SPEC |
 |---|---|
-| ESP-NOW is a binding: 250 B frame, 242 B payload after the 8-byte header, unordered, unreliable, ACKMASK loss signal, control frames stop-and-wait 3x at 100 ms, no retransmit of STATE/STREAM | SPEC §13.1 matrix, §13.3 |
-| The ESP-NOW line IS the normative floor: every STATE payload fits 242 B | §13.1, §9.1 |
-| A BEACON frame (`0x17`, raw, channel 0: `boot_id`, catalog etag, pairing-open flag) broadcast every 500 ms, ONLY while a pairing window is open | §13.7 |
-| ESP-NOW is "deliberately trivial to enable, not itself conformance-relevant" | §13.1 (RFC-043) |
-| A valid ESTOP frame from ANY ESP-NOW peer, paired or not, MUST be honored; the beacon reserves a `datagram_estop` flag bit | RFC-053 items 2 and 2b (accepted) |
-| Push-to-pair: a physical-presence proof opens a short window | §12.3(c), RFC-027 |
-| The catalog is fixed per firmware; a change changes the etag and is signaled on the `catalog` STATE channel | §8.6, §8.3 |
-| The deadman forces no stop on the hub side; it is liveness bookkeeping | §11.3 (RFC-045) |
-| A hub MAY span several physical devices; an internal link has no conformance duty | RFC-056 item 1 (PROPOSED) |
+| The ESP-NOW spoke: a star, accessory to host only, no client session on it, ordinary Valence frames with accessory-relative channel ids | §13.3.1 |
+| v1 framing pinned: every spoke frame fits 250 B with its 8-byte header; no §5.6 fragmentation, anything larger moves over the blob verb | §13.3.1 item 1 |
+| Unencrypted by ruling (H13), bounded by obligations: the accessory clamps every actuating value, the host never treats accessory telemetry as safety-grade | §13.3.1 item 2 |
+| BEACON is a permanent 1 Hz heartbeat with a pinned 22-byte payload | §13.3.1 item 3 |
+| Active scan on channels 1 to 13, answered by an out-of-cadence beacon | §13.3.1 item 4 |
+| The accessory deadman forces its safe state; only BEACON refreshes it | §13.3.1 item 5 |
+| ESTOP from any peer; the host repeats it on the spoke and keeps `estop_latched` set while latched | §13.3.1 item 7, §5.5 |
+| Join, declaration fetch and rejoin: JOIN_REQ `0x21`, JOIN_REPLY `0x22` | §13.3.2 |
+| The user channel space, 32-id slices, the declaration as a catalog, the `safe` annotation, persistence, capacity | §8.10, §8.8 |
+| The catalog grows at runtime in the user space only, without revoking readiness | §8.6 |
+| Relationships are hub policy with seven registered maps, stored in a STORE | §8.11 |
+| PAUSE and ESTOP reach accessories through the host's interlock | §11.6 |
+| The `accessory` and `accessory-host` conformance profiles | §17.1, §17.1.1 |
+| Config mode: BLE and USB serial, no WiFi, no softAP, no spoke | §13.4.1 |
 
-Where the rulings move past the spec (each is an RFC, §14):
-
-- **The beacon becomes a permanent 1 Hz heartbeat**, not a 500 ms
-  pairing-only broadcast (§13.7). It also gains the hub's durable id and its
-  WiFi channel.
-- **No encryption.** §12.9 says ESP-NOW pairing "MAY carry segment keys"
-  and that "unencrypted operation remains permitted for `watch`-class
-  traffic", which implies control traffic should be keyed. The ruling runs
-  every accessory link in the clear, so §12.9 needs an amendment and an
-  honesty clause (§8 below states the consequence).
-- **The catalog grows at runtime.** §8.6's "never created or destroyed at
-  runtime" is exactly what pairing an accessory does.
-- **A new role.** An accessory is not a client, not a hub and not a §14
-  relay; §17.1 has no row for it. RFC-056 would let a hub treat its
-  accessories as internal components with no spec duty, but that only works
-  for first-party parts; community accessories must work with any hub, so
-  the link needs a spec.
-- **An accessory deadman DOES force a safe state**, unlike §11.3's hub-side
-  deadman. Not a contradiction: §11.3 leans on §9.6 (every motion mode is a
-  bounded plan that settles by itself). A pump that was told "on" has no
-  plan to run out of; it stays on. That is the case §11.3 already carves out
-  for hub-autonomous sources (`source.background_run`, default `false` =
-  stop). The declared safe value is the accessory's equivalent of that
-  default, fixed at flash time.
+**Why an accessory deadman forces a safe state when the hub's does not.**
+§11.3's hub-side deadman forces no stop because every motion mode is a
+bounded plan that settles by itself (§9.6). A pump told "on" has no plan to
+run out of; it stays on. That is the case §11.3 carves out for
+hub-autonomous sources (`source.background_run`, default `false` = stop),
+and the declared `safe` value is the accessory's equivalent of that default,
+fixed at flash time.
 
 ## 3. Topology
 
@@ -85,122 +74,157 @@ and every accessory talks only to it.
 - **Same channel or nothing.** "The channel must be set as the channel that
   the local device is on" (same page). The hub's radio sits on its router's
   channel (station mode), so accessories follow it (§6).
-- **Never with the P4 in softAP mode** (ruling). No softAP ever, in any mode,
-  including config mode.
+- **Never with the P4 in softAP mode.** A hub never operates a softAP, in
+  any mode, including config mode (SPEC §13.3.1 item 9, §13.4.1).
 
 ## 4. The hub beacon
 
-One broadcast every second, always, on the hub's current channel. It is the
-accessory's only proof that the hub is alive, and its discovery signal.
+BEACON (`0x17`, raw, header channel `0x0000`) is the accessory's only proof
+that its hub is alive, and its discovery signal. The host broadcasts it
+every `spoke_beacon_interval_ms` (1000) while the spoke is up, every 500 ms
+while a pairing window is open, and once out of cadence in answer to a
+DISCOVER_PROBE (§6). Payload as pinned, little-endian and tail-extensible
+(SPEC §13.3.1 item 3):
 
-Proposed payload (a Valence frame, `0x17` reshaped by the ESP-NOW binding
-and beacon RFC):
-
-| Field | Bytes | Why |
+| Field | Bytes | What the accessory does with it |
 |---|---|---|
-| header (§5.1): `type`, `flags`, `channel` 0, `seq`, `len` | 8 | `seq` is the beacon sequence number, free from the header |
-| `hub_instance_id` u64 | 8 | durable cross-boot hub id (the §13.8 argument: a boot-scoped id cannot tell two hubs apart across a reboot). An accessory obeys only the hub it paired with. |
-| `boot_id` u32 | 4 | a change means the hub rebooted and lost its retained values: the accessory goes safe and re-announces (§5) |
-| `catalog_etag` | 8 | kept from today's BEACON for Valence-over-ESP-NOW clients |
-| `wifi_channel` u8 | 1 | 2.4 GHz channels overlap; a beacon sent on 6 is often heard while tuned to 5 or 7. This field names the true one. |
-| `flags` u8 | 1 | bit0 `pairing_window_open` (existing meaning, §13.7); bit1 `datagram_estop` (RFC-053 2b); bit2 `estop_latched` (proposal: every accessory holds safe while set); bit3 `going_away` (hub goodbye, §5); bits 4-7 zero |
+| header (§5.1) | 8 | `seq` is the beacon sequence, compared per §7.3 and reported back as accessory-status `beacon_seq` |
+| `boot_id` u32 | 4 | a change means its hub rebooted (§15 Q16) |
+| `catalog_etag` | 8 | nothing; it is the §13.7 prefix client peers read |
+| `flags` u8 | 1 | registry `beacon_flags`: bit0 `pairing_window_open`, bit1 `datagram_estop`, bit2 `accessory_host`, bit3 `estop_latched`; bits 4-7 zero |
+| `hub_instance_id` u64 | 8 | the durable hub id; with the source address, the only test of "my hub" |
+| `wifi_channel` u8 | 1 | the primary channel the hub transmits on; a beacon heard leaking from an adjacent channel retunes the accessory to the named one |
 
-Total 30 B of 250 (§16). RFC-075 item 3 pins the same 22-byte payload in a
-different field order and flag-bit assignment (bit2 `accessory_host`, bit3
-`estop_latched`; the goodbye is GOODBYE, not a bit); the RFC wins once
-accepted, and the size is identical either way.
+30 B on the wire (§16). There is no PAUSE or STOP bit: pause reaches
+accessories as commanded safe values through the host's interlock (§9), and
+only `estop_latched` is broadcast (RFC-075 ruling, 2026-10-01). A hub's
+goodbye is a GOODBYE frame, not a bit (§5).
 
 ## 5. The accessory deadman
 
-- **Five missed beacons = dead hub = safe state.** 5 s at 1 Hz. Only a beacon
-  from the paired `hub_instance_id` resets the clock (proposal, matching the
-  ruling's wording; whether hub unicast frames also count is §15 Q5).
-- **Goodbye = safe immediately.** Two doors: a unicast GOODBYE (`0x11`,
-  §6.9) to one accessory (unpaired, evicted), or a beacon with `going_away`
-  set, repeated a few times, before a planned hub shutdown or reboot.
-- **Also safe:** at power-on before the radio is up; when `boot_id` changes;
-  while `estop_latched` is set (proposal).
-- **Every actuating channel declares its safe value** at flash time: a value
-  (`0`, `false`) or `hold` (stop driving and stay where it is, for position
-  actuators, where "go to a safe angle" would itself be motion). Readouts
-  declare none. The generator refuses an actuator without one.
-- **Safe is sticky.** When beacons return, the accessory does NOT resume the
-  last commanded value; it waits for a fresh one from the hub. This mirrors
-  §6.8: "Motion never restarts because a socket reopened."
+One clock (SPEC §13.3.1 item 5; RFC-075 ruling, 2026-10-01). The accessory
+enters its **safe state** when:
+
+- **no BEACON from its hub** (source address and `hub_instance_id` both
+  match) has arrived for its deadman window: `spoke_deadman_ms` (5000), or
+  the shorter `deadman_ms` it declares in JOIN_REQ, never below 2 x
+  `spoke_beacon_interval_ms` (2 s). **Only BEACON refreshes it**; unicast
+  commands do not;
+- it receives **any GOODBYE** (`0x11`) from its hub, whatever its code and
+  even if the payload fails to decode (a host SHOULD broadcast GOODBYE
+  `REBOOTING` or `NORMAL_CLOSURE` before a planned reboot);
+- it receives a valid, CRC-checked **ESTOP** frame (§5.5) from any source,
+  or a BEACON from its hub with `estop_latched` set;
+- it detects a **local fault**.
+
+It is also safe at power-on until its hub commands it, and after every join
+until its host commands it (§13.3.2).
+
+- **The safe state holds every actuating field at its declared `safe`
+  value** (every value-bearing field of a declared INTENT schema or c2h
+  STREAM layout) and abandons any verb in progress. The generator refuses
+  an actuator without one; readouts declare none.
+- **Safe is sticky.** From deadman, GOODBYE or fault the accessory leaves
+  safe only on a fresh actuating command received after a matching BEACON;
+  from ESTOP, only after a BEACON with `estop_latched` clear, and then only
+  on a fresh command. It never restores its pre-safe values on its own,
+  mirroring §6.8: "Motion never restarts because a socket reopened."
+- **The door is reported.** Accessory-status `state` names it
+  (`safe_joined`, `safe_deadman`, `safe_goodbye`, `safe_estop`,
+  `safe_fault`); `safe_estop` is the host's ESTOP acknowledgment
+  (§17.1.1).
+- **`hold` has no wire form** (§15 Q15). `safe` is a typed value inside the
+  field's `min`/`max` (SPEC §8.8), so the config's `safe: hold` for a
+  position actuator (§10.2) cannot be declared as written.
 - **The false-trip arithmetic, stated so the bench can check it.** Broadcast
   frames get no MAC-layer retries, so beacon loss runs higher than unicast
   loss. With per-beacon loss `p`, five in a row happens roughly `p^5` of the
   time: at 10% loss about once a day of continuous use, at 30% about every
-  seven minutes. Validation (a) measures `p`; (c) measures the trip itself.
+  seven minutes. iso-3ph.1 measures `p`; iso-3ph.3 measures the trip itself.
 
 Loss of the hub and loss of the channel look the same, and they share one
-code path: safe, then rescan (§6).
+code path: safe, then rescan (§6), which is the boot path.
 
 ## 6. Channel follow
 
-At boot, and after any deadman trip, the accessory scans channels 1-13 for
-its hub, adds the hub as a peer on the channel it found, and joins or
-re-announces. A router that changes channel therefore costs one deadman trip
-(5 s, safe) plus one scan. The BLE channel hint is NOT built (ruling).
+The host never changes channel for its accessories; it follows its access
+point (SPEC §13.3.1 item 4). At boot and on every deadman fire the accessory
+scans channels 1 to 13 (RFC-075 ruling: everywhere; a regional accessory MAY
+scan a subset), finds its hub, adds it as a peer on that channel, and sends
+JOIN_REQ (§7). A router that changes channel therefore costs one deadman
+trip (5 s, safe) plus one scan. The BLE channel hint is NOT built (ruling).
 
-**The scan is an active probe; the beacon stays for the deadman.** Passive
-listening cannot meet the ruled ~2 s: a 1 Hz beacon lands inside a 150 ms
-window only 15% of the time, so a passive listener needs about 1 s of dwell
-per channel, about 13 s cold. So on each channel the accessory broadcasts a
-tiny PROBE and the hub answers it at once, unicast, with the beacon's
-payload (§4). That is the §13.8 DISCOVER_PROBE / DISCOVER_REPLY shape moved
-onto ESP-NOW (and 802.11 active scanning's), and it makes the scan ~150 ms
-per channel, 13 x 150 ms = ~2 s worst case. The 1 Hz beacon is untouched;
-it is still the only thing that feeds the deadman (§5). Two rules follow:
-the hub answers strangers' probes, so replies are rate-limited per source
-the way §13.8 limits DISCOVER_REPLY; and channels 12-13 are receive-only in
-some regulatory domains, so the accessory probes only on channels its
-region allows and listens passively on the rest. Validation (b) measures
-passive against active to confirm the arithmetic.
+**The scan is active** (RFC-075 ruling, 2026-10-01). On each channel the
+accessory broadcasts one DISCOVER_PROBE (`0x1E`, the §13.8 payload
+unchanged) and listens `spoke_scan_dwell_ms` (150) for a BEACON from its hub
+or, in pairing state, any BEACON with `accessory_host` and
+`pairing_window_open` set. The host answers a probe with an immediate,
+out-of-cadence **broadcast** BEACON, at most one per 150 ms (broadcast,
+because a unicast answer to an unknown address would spend a peer-list
+entry). 13 x 150 ms is about 2 s cold. Passive listening is also conformant
+but needs about 1 s of dwell per channel at a 1 Hz beacon, about 13 s cold.
+The probe only finds the hub; the beacon alone feeds the deadman (§5).
+iso-3ph.2 measures both forms.
 
-Config mode (no WiFi, §14) puts the hub's radio on a default channel; once
-the hub joins a router, accessories lose it once and find it again through
-this same path.
+**No spoke in config mode.** A hub in config mode does not run the spoke:
+accessory pairing waits until it has joined WiFi, because the spoke follows
+the access point's channel and there is none (SPEC §13.4.1; RFC-079 ruling,
+2026-10-01).
 
 ## 7. Join and pairing
 
-Lineage: §12.3(c) push-to-pair (RFC-027): a physical-presence proof opens a
-short window.
+Per SPEC §13.3.2 (RFC-076, ruled 2026-10-01). Lineage: §12.3(c)
+push-to-pair.
 
-1. **The hub opens a window.** The operator holds the hub's pairing button at
-   runtime. The beacon sets `pairing_window_open`. Window length defaults to
-   `pairing_window_default_s` (120 s, §12.3) unless the RFC says otherwise.
-2. **The accessory is in pairing state.** An unpaired Isotope device always
-   is; a paired one enters it by holding its own button (config `pairing`).
-3. **It finds the hub** (§6), sees the window flag, and sends a JOIN request:
-   its durable id (from the eFuse MAC), its declaration etag, channel count,
-   declaration size.
-4. **The hub accepts** if the window is open, a peer slot is free and a
-   channel slice is free. It assigns the slice, adds the peer, answers
-   unicast, stores the pairing to flash.
-5. **The accessory sends its declaration** (§8), chunked. The hub stores it,
-   adds the channels to its catalog, and the etag changes (§8.3); every
-   connected client re-syncs through the §8.6 path.
-6. **Later boots need no window.** A known id with an unchanged declaration
-   etag is re-admitted on sight. A changed etag (reflashed with a new config)
-   is §15 Q6.
+1. **The hub opens a window**: its pairing control, or the `accessory-admin`
+   `window_open` op from a `configure` session (the in-band twin). One
+   window, one timer (`pairing_window_default_s`), reported by BEACON
+   `pairing_window_open`. **An accepted join is the window's single grant**:
+   one press, one device.
+2. **The accessory is in pairing state**: by its own local gesture (config
+   `pairing`), or on its own when factory-fresh.
+3. **It finds a hub** (§6) whose BEACON has `accessory_host` and
+   `pairing_window_open` set and sends **JOIN_REQ** (`0x21`, unicast) to that
+   beacon's source, once per BEACON received, until answered:
+   `accessory_id:u64 + proto_ver:u8 + declaration_etag:8B + deadman_ms:u16 +
+   flags:u8 + fw_version:str16 + product:str16` = 52 B, `flags` bit0
+   `pairing_state`.
+4. **The hub answers JOIN_REPLY** (`0x22`, unicast): `hub_instance_id:u64 +
+   accessory_id:u64 + result:u8 + flags:u8` = 18 B, `result` a
+   `join_results` value (`accepted`, `window_closed`, `capacity`,
+   `unsupported`, `declaration_invalid`, `not_paired`). **Every JOIN_REQ is
+   answered**, rate-limited per source for unknown accessories. Flag bit0
+   `declaration_needed` makes the reply provisional.
+5. **The hub pulls the declaration** (§8): BLOB_REQ `ns = 0`, the accessory
+   answers BLOB_CHUNK with §8.4 pacing, the hub verifies SHA-256 against
+   `declaration_etag`, sends BLOB_DONE, validates (§8.10) and grows its
+   catalog (§8.6); the final JOIN_REPLY follows validation and the capacity
+   check. The accessory persists its hub's `hub_instance_id` and address.
+6. **Rejoin needs no window.** A paired accessory sends the same JOIN_REQ to
+   its stored host on every reacquisition. Equal etag: no transfer.
+   Different etag (reflashed, same identity): the host refetches,
+   revalidates and replaces the declaration in the same slice, and
+   relationships whose target field no longer exists are disabled. A
+   forgotten accessory is answered `not_paired` and MAY clear its stored
+   hub. After any join the accessory is safe until its host commands it.
 
-Bounded like §12.3(a): strangers' join requests outside a window are dropped
-without an answer, and pending joins are capped (`pairing_pending_max`
-lineage). Single-grant per window or many is §15 Q7.
+**Identity.** `accessory_id` is a u64 the accessory generates randomly at
+first boot and persists across reboots and firmware updates; the radio
+address is a transport address, not identity. A wiped accessory is a new
+one and pairs again (SPEC §8.10).
 
 ## 8. Self-description and what the hub stores
 
 **The accessory is self-describing.** Its channels, types, ranges and
-deadman are baked in at flash time and declared to the hub on join as a
-mini-catalog. Only hub-side things (names, relationships) are authored from
-Phosphor.
+deadman are baked in at flash time and declared to its host on join. Only
+hub-side things (the accessory's name, relationships) are authored from a
+client (SPEC §8.10).
 
 Per channel, the declaration carries: relative id (`0x02`-`0x1F`, 30 at
-most, SPEC §8.10), kind (actuator,
-readout, event, estop button), `packed_field_types` value type, unit, scale,
-min/max, safe value (actuators, REQUIRED), max rate. Per accessory: durable
-id, model string, firmware version, deadman, declaration etag.
+most), kind (actuator, readout, event, estop button), `packed_field_types`
+value type, unit, scale, min/max, `safe` (actuators, REQUIRED), max rate.
+Per accessory, JOIN_REQ carries the durable id, product string, firmware
+version, deadman and declaration etag (§7).
 
 **One Isotope channel is one catalog entry.** The declaration IS the
 accessory's catalog (SPEC §8.10), so a readout is a STATE entry and an
@@ -210,28 +234,48 @@ applied value only from STATE (SPEC §9.3); that spends two ids per actuator,
 so a slice holds 15 mirrored actuators. That also matches Phosphor's ruling
 that a control is one channel field.
 
-**The declaration does not fit one frame.** It rides application chunking
-the way blobs do (§8.4, 192 B chunks), never §5.6 fragmentation, which is
-for control frames only. Worst case it is 3,592 B in 19 chunks (§16).
+**The declaration is a catalog, not a new grammar** (SPEC §8.10): same CDDL,
+same deterministic encoding, same etag, relative ids. It REQUIRES `safe`
+(field key 25, §8.8) on every value-bearing field of every INTENT schema and
+c2h STREAM layout (`action.*` verbs exempt), SHOULD carry `category`
+(`auxiliary`, 7), carries no STORE entries, and its `group` strings are its
+own: the host does not rewrite them (RFC-076 ruling). The host validates it
+before storing anything: ids in `0x01`-`0x1F`, the `r = 0x01` entry exactly
+the registered accessory-status layout, every STATE layout within 242 B,
+every INTENT and EVENT worst-case frame within 250 B, every
+`setting_channel` inside the declaration, every entry within 4,096 B, the
+whole within `accessory_declaration_max_bytes`, every `safe` present and in
+range.
 
-**What the hub stores** (flash, unpacked to PSRAM at boot, ruling): the
-declaration verbatim, the durable-id to MAC binding, the assigned slice,
-hub-authored display names, and relationships. The accessory stores only its
-hub's `hub_instance_id` and MAC.
+**The declaration does not fit one frame.** It is the accessory's blob
+namespace 0, pulled by the host with BLOB_REQ and served with §8.4 pacing,
+never §5.6 fragmentation (§13.3.1 item 1). Worst case it is 3,592 B in 19
+chunks (§16).
 
-**Commands are absolute and echoed.** The hub sends absolute target values
-(§9.3's no-relative-intents rule: "set to 40", never "add 5"); the accessory
-reports the value it applied; the hub resends until they match. Clients show
-the accessory's reported value, never the hub's wish (ground-truth doctrine).
+**What the hub stores** (SPEC §8.10): `accessory_id`, peer address, slice
+index, declaration bytes and etag, `deadman_ms`, the hub-authored name, and
+the relationships that reference it. A paired accessory that is absent keeps
+its channels in the catalog: offline, shown stale, writes answered NACK
+`ACCESSORY_OFFLINE`. Forgetting is host-side only. The accessory stores its
+own `accessory_id` and its hub's `hub_instance_id` and address.
 
-**Identity is not authenticated (honesty clause).** No encryption means any
-radio in range can send frames with a paired accessory's MAC and id. The
-exposure is bounded by one rule, proposed here as binding: **an accessory
-never drives machine motion.** No relationship may target a motion channel;
-the arbiter's sole-caller rule (§11.4) stands. A spoofer can fake readouts
-and poke accessory actuators within their declared ranges; it cannot move
-the machine. An accessory CAN always stop the machine (RFC-053: an ESTOP
-frame from any peer), which is the safe direction.
+**The host proxies, never exposes** (SPEC §17.1.1). It forwards a client
+INTENT only after its own checks (tier, declared range, relationship
+ownership, the interlock), under its own spoke `intent_id`; the accessory
+answers ECHO with its post-clamp applied values, key-complete, or NACK, and
+the client's ECHO carries the accessory's values: ground truth. Intents are
+absolute (§9.3: "set to 40", never "add 5"). No answer after §13.3's three
+retransmits at 100 ms: NACK `ACCESSORY_OFFLINE`.
+
+**Identity is not authenticated** (H13, SPEC §13.3.1 item 2). Any radio in
+range can send frames with a paired accessory's address and id. The
+obligations that bound it: the accessory clamps every received actuating
+value into its declared `min`/`max`, so a forged command does nothing a
+legitimate one could not; the host never treats accessory telemetry as
+safety-grade input; relationship targets are accessory fields only (§8.11),
+so an accessory never drives machine motion; a client never presents spoke
+traffic as authenticated. An accessory CAN always stop the machine (an ESTOP
+frame from any peer, §13.3.1 item 7), which is the safe direction.
 
 **The accessory channel budget is hub-advertised** (ruled 2026-10-01,
 RFC-077; `iso-yg8`). An accessory declares at most 30 own channels; what a
@@ -255,22 +299,42 @@ never reused after a forget (SPEC §8.10).
 
 ## 9. Relationships
 
-A relationship is **hub policy**: a source field, a target accessory channel,
-and a mapping. Source: any STATE field in the hub's catalog (machine
-position, speed, another accessory's readout). Target: one accessory
-actuator. Mapping (proposal): a clamped linear map, optionally a threshold,
-at most the target's declared max rate.
+Hub policy, evaluated on the accessory host and surviving every client
+closing (SPEC §8.11; RFC-078 ruling, 2026-10-01). Isotope never sees one: a
+relationship's output reaches it as an ordinary absolute command through
+the host's proxy path.
 
-- **Evaluated on the hub**, on source change, never on a clock (Nucleus
-  motion doctrine: event-driven). Output clamped to the target's declared
-  range.
-- **Survives client loss.** Stored in hub flash; Phosphor closing changes
-  nothing.
-- **Targets accessories only** (§8's binding rule).
-- **Deadman and estop win.** A relationship output never overrides the
-  accessory's safe state.
-- **Authored from Phosphor** through a hub-side surface (a STORE, §8.7, or a
-  standard channel). None of tonight's RFCs covers it (§15 Q8).
+- **Source**: a numeric field of an h2c STATE or STREAM layout anywhere in
+  the host's catalog (machine position, speed, another accessory's readout).
+  **Target**: a value-bearing field of an accessory INTENT schema or c2h
+  STREAM layout. Chains are allowed; a save that would close a feedback loop
+  is refused `INVALID_VALUE`.
+- **Seven maps** (registry `relationship_maps`), parameters in physical
+  units, output finally clamped into the target's `min`/`max`: 1
+  `linear_clamp`, 2 `invert`, 3 `threshold_hysteresis`, 4 `slew_limit`, 5
+  `lowpass`, 6 `gate` (else the target's `safe`), 7 `piecewise_table`.
+- **Evaluated** on every source update, writing only when the output moved
+  by the target's `step`, no faster than its `max_rate_hz`; the stateful
+  maps also tick at that rate while converging.
+- **Stored in the relationships STORE** (`0x0013`, kind `relationship.map`,
+  at most `relationships_max` 16, roster `0x0014`) and authored through the
+  RFC-067 store verbs on `relationships-write` (`0x0015`, `action.store`),
+  the three joined by `store_id` (RFC-070). No relationship-admin channel.
+- **Ownership**: an enabled, armed relationship owns its target field; a
+  client write to it gets `SOURCE_CONFLICT`.
+- **Arming is `resume`** (§11.6). `armed` is volatile and false at every
+  boot; saving an enabled relationship arms it at the next `resume`.
+- **The interlock** (§11.6): while ESTOP is latched, every relationship is
+  disarmed, every target driven to its `safe` value, and client writes to
+  actuating accessory fields refused `ESTOP_ACTIVE`. On PAUSE latching, the
+  same disarm and drive-to-safe, once; direct client writes under pause stay
+  allowed, the operator's own act. This is how pause reaches accessories:
+  commanded safe values, not a beacon bit (RFC-075, RFC-085).
+- **Degradation**: a removed source or target disables the relationship and
+  drives the target to `safe`; an offline target idles it, and on rejoin,
+  if still armed, the host sends the current mapped value.
+- **Streams**: a c2h bundle is applied on arrival keeping its `t_off`
+  offsets; the spoke has no time sync (RFC-078 ruling).
 
 ## 10. The config format
 
@@ -428,7 +492,7 @@ RPC surface. Two pieces close that:
   ESPHome, so the shim is ported or vendored, not linked.
 
   **Risks: three bugs the shim's review left open at merge**, each quoted
-  from the PR, each a hub-side acceptance item (validation (d)):
+  from the PR, each a hub-side acceptance item (iso-3ph.4):
   1. *Send can stall forever.* "A lost SEND completion permanently stalls
      the ESP-NOW transmit path": no timeout, the send queue fills. This
      stops the beacon, so every accessory fails safe (the right direction),
@@ -455,16 +519,19 @@ own 2.4 GHz co-processor, off the station's channel, which deletes §6's
 channel-follow problem. The part the operator named ("ESP32-E22") is
 unverified.
 
-## 14. The RFCs this needs (Valence repo, by title)
+## 14. The RFCs behind this design (Valence repo)
 
-| RFC (title) | What it settles here |
-|---|---|
-| ESP-NOW binding and hub beacon | §4 beacon shape and cadence; §6 probe form; §12.9 amendment for unencrypted operation plus its honesty clause |
-| Live catalog growth | §8.6 amendment: channels added and removed at runtime, mid-session re-announce |
-| Accessory conformance profile | the accessory role and its §17.1 row; the safe-state duty (§5) and why it differs from §11.3 |
-| Accessory join and declaration | JOIN frames, slice allocation, the channel-id range and hub budget, the declaration encoding and its chunking |
-| Config mode | boot-with-button provisioning over BLE (RFC-054 and RFC-069 lineage): no WiFi, window open, setup category |
-| *(not drafted)* Relationship surface | how a client authors and reads relationships (§9) |
+Accepted by the operator 2026-10-01 (RFC-085 2026-10-02) and landed; SPEC
+sections at Valence 9dd395d.
+
+| RFC | Landed | What it settled here | SPEC |
+|---|---|---|---|
+| RFC-075 ESP-NOW spoke binding | 8484552 | the spoke, beacon payload and cadence, active scan, the deadman, unencrypted operation (H13), the peer limit | §13.3.1 |
+| RFC-076 Accessory join and declaration | b18fac1 | JOIN frames, 32-id slices, the declaration as a catalog, `safe`, persistence, sticky slices | §8.10, §13.3.2 |
+| RFC-077 Live catalog growth | 4c0ede7 | user-space growth without revoking readiness, `CHANNEL_WITHDRAWN`, hub-advertised capacity | §8.6, §8.10 |
+| RFC-078 Accessory conformance profile and the hub relationship engine | ede1f46 | the `accessory` and `accessory-host` profiles, accessory-status, the seven maps, the relationships STORE, the interlock | §17.1.1, §8.11, §11.6 |
+| RFC-079 Config mode and the setup category | 4d267b0 | config mode over BLE and USB serial: no WiFi, no softAP, no spoke | §13.4.1 |
+| RFC-085 Three safety pairs | 1ddf8af | PAUSE as the stop that reaches accessories through the interlock | §11.1, §11.6 |
 
 ## Out of scope
 
@@ -475,45 +542,69 @@ pin, not an Isotope device); an accessory commanding machine motion.
 ## 15. Open questions
 
 0. **CANON FLAG -- the hardware SPEC says PAIR held at power-on opens AP
-   config mode; the 2026-09-26 rulings forbid softAP.**
-   Source A: `../Hardware/flagship/SPEC.md:66` (2026-09-23 row): "SW2 PAIR
-   (hold = pair, held at power-on = AP config mode, press TBD)".
-   Source B: the 2026-09-26 rulings: config mode is "pairing window open, BLE
-   advertising with the window flag, no WiFi", and "No softAP ever"
-   (ESP-NOW never runs with the P4 in softAP mode).
-   My read: B is newer and deliberate; A predates the ESP-NOW decision. The
-   button and its "held at power-on" gesture are unchanged, only the mode it
-   enters moves from AP to BLE. Firmware behavior is Nucleus's, but the
-   hardware repo's row is the stated home and reads as current.
-   Your call: amend the hardware SPEC row to "held at power-on = config mode
-   (BLE, no WiFi)", in the hardware repo, dated?
-1. **Scan form.** Designed as an active probe (§6). Confirm, once
-   validation (b) has measured passive against active.
-2. **ESTOP fan-out.** Does a latched machine e-stop put every accessory in
-   its safe state (the `estop_latched` beacon bit)? (§4)
+   config mode.** ANSWERED 2026-10-01 for Isotope (RFC-079; SPEC §13.4.1):
+   config mode is BLE and USB serial, no WiFi, no softAP, no spoke. Still
+   owed in the Hardware repo, its home: `../Hardware/flagship/SPEC.md:66`
+   (2026-09-23 row) still reads "held at power-on = AP config mode".
+1. **Scan form.** ANSWERED 2026-10-01 (RFC-075; SPEC §13.3.1 item 4): active,
+   one DISCOVER_PROBE per channel, channels 1 to 13. iso-3ph.2 still
+   measures the join time. (§6)
+2. **ESTOP fan-out.** ANSWERED 2026-10-01 (RFC-075, RFC-085; SPEC §13.3.1
+   items 3, 5 and 7, §11.6): yes, a latched e-stop puts every accessory in
+   its safe state (spoke ESTOP repeats plus `estop_latched`); no STOP or
+   PAUSE bit, pause rides the interlock. (§4, §9)
 3. **Accessory channel budget and id range.** ANSWERED 2026-10-01 (RFC-076,
    RFC-077; SPEC §8.10): the budget is declared and hub-advertised, the
    library catalog capacity is a hub build parameter, and ids are 32-id
    slices of the user space, 30 own channels per accessory. (§8, §16)
-4. **Default labels.** Does the declaration carry each channel's config
-   `key` as a default display name, or is a fresh accessory shown as
-   "channel N" until named in Phosphor? (§8)
-5. **What resets the deadman:** only beacons, or any frame from the hub? (§5)
-6. **A reflashed accessory** (same id, new declaration): re-admitted
-   automatically, or held offline until a pairing window? Relationships
-   pointing at removed channels need an answer either way. (§7)
-7. **One grant per window, or many?** (§7)
-8. **Relationship authoring surface:** a sixth RFC, or a device STORE plus a
-   role? (§9)
+4. **Default labels.** ANSWERED 2026-10-01 (RFC-076; SPEC §8.10, Appendix
+   C): every entry carries its REQUIRED `name` (up to 32 B), so the config
+   `key` is the default label; the hub-authored name is the accessory's
+   (`accessory-admin` `rename`). (§8)
+5. **What resets the deadman.** ANSWERED 2026-10-01 (RFC-075; SPEC §13.3.1
+   item 5): only a matching BEACON; one clock. (§5)
+6. **A reflashed accessory.** ANSWERED 2026-10-01 (RFC-076; SPEC §13.3.2):
+   re-admitted without a window, declaration refetched and replaced in the
+   same slice, relationships whose target field is gone disabled. (§7)
+7. **One grant per window, or many?** ANSWERED 2026-10-01 (RFC-076; SPEC
+   §13.3.2): one join per window; a `configure` session may open it
+   in-band; pairing waits until the hub has joined WiFi (RFC-079). (§7)
+8. **Relationship authoring surface.** ANSWERED 2026-10-01 (RFC-078; SPEC
+   §8.11): the core relationships STORE and the RFC-067 store verbs; no
+   sixth RFC, no relationship-admin channel. (§9)
 9. **Generator shape:** compiled per config, or prebuilt image plus config
    partition? (§11)
 10. **Where the web flasher and builder live:** this repo or Phosphor. (§11)
 11. **v0 chip list:** which dev boards are on the bench. (§13)
 12. **Battery accessories:** accept continuous receive, or design a
     duty-cycled beacon window? (§13)
-13. **Deadman range:** fixed 5 s, or declared per accessory within a clamp?
-    (§5)
+13. **Deadman range.** ANSWERED 2026-10-01 (RFC-075, RFC-076; SPEC §13.3.1
+    item 5, §13.3.2): declared per accessory in JOIN_REQ `deadman_ms`, 5 s
+    by default, shorter allowed, never below 2 s. (§5)
 14. **License:** operator decision, not chosen.
+15. **CANON FLAG -- `safe: hold` has no wire form.** (§5, §10.2)
+    Source A: this document's `hold` safe state for position actuators
+    (stop driving, stay put). Source B: SPEC §8.8 makes `safe` a typed value
+    inside the field's `min`/`max`, and §13.3.1 item 5 holds every actuating
+    field at it, so a position target's safe value is a position and
+    entering safe would drive toward it.
+    My read: B binds; a position-following stand needs either an RFC (a
+    hold meaning for a `command.position` field's safe state) or a remodel
+    (a `drive` enable with safe `false` beside the target, the firmware
+    never moving while disabled). The RFC is the honest one: the remodel
+    reports a target value the actuator is not seeking.
+    Your call: RFC, or remodel the stand? (`iso-42u`)
+16. **A hub that reboots inside the deadman window.** SPEC §13.3.2 says a
+    host reboot "needs nothing extra: every accessory's deadman fires". That
+    holds for a planned reboot (GOODBYE) and for one longer than the window.
+    A crash-reboot shorter than it need not fire it: the restarted beacon
+    `seq` is newer or older under §7.3 depending only on where the old one
+    stood, so the accessory may keep accepting beacons, keep its last
+    commanded value and never rejoin, while the rebooted host has every
+    relationship disarmed (§11.6).
+    Proposal: Isotope treats a `boot_id` change from its hub as a deadman
+    fire (`safe_deadman`, rescan, rejoin), and the case goes to the Valence
+    queue as an RFC so every accessory does the same. (`iso-djk`)
 
 ## 16. Frame budget (paper, iso-3ph.8)
 
