@@ -661,3 +661,47 @@ hub flash per accessory: declaration A/B 8192 B at the ceiling, 7184 B at the wo
 - **Spoke control frames all fit:** BEACON 30 B, JOIN_REQ 60 B, JOIN_REPLY
   26 B, BLOB_CHUNK 214 B, each under 250. Paper only: the beacon on the wire
   is iso-3ph.1's first measurement.
+
+## 17. Conformance checklist: the `accessory` profile
+
+What every generated Isotope image owes, from SPEC §17.1.1 (RFC-078) at
+Valence 9dd395d, each duty with the firmware module that will own it. No
+firmware exists; the module names are the proposed split, fixed when the
+generator shape is (§15 Q9). Every wire number comes from the Valence
+generated registry (`lib/valence/include/valence/generated/registry_constants.hpp`),
+never a local constant.
+
+| # | Duty | SPEC | Owner |
+|---|---|---|---|
+| 1 | **Parser totality**: every malformed or oversize frame refused, never a crash or a partial apply | §5.8, §17.1 | `wire` (the Valence library decoders), `link` (length gate before decode) |
+| 2 | **Exact encoding**: §5.1 header, §5.3 CBOR profile, §5.4 packed layouts, golden-vector exact | §17.1.1, §17.2 | `wire` |
+| 3 | **Declaration**: a §8.1 catalog with relative ids `0x01`-`0x1F`, at most 30 own channels, `safe` on every value-bearing INTENT and c2h STREAM field, the §8.10 validation rules, no STORE entries, within 4,096 B | §8.10, §8.8 | generator (builds and lints it), `declaration` (holds the bytes and etag) |
+| 4 | **Serve the declaration** as blob namespace 0 over BLOB_REQ/BLOB_CHUNK with §8.4 pacing, its etag in JOIN_REQ | §8.4, §13.3.2 | `declaration` |
+| 5 | **ECHO or NACK on every INTENT**, post-clamp and key-complete, idempotent over at least the latest `intent_id` | §9.3, §17.1.1 | `intent` |
+| 6 | **Clamping**: every received actuating value clamped into its declared `min`/`max` before it reaches a pin | §13.3.1 item 2 | `channels` |
+| 7 | **c2h STREAM intake**: §5.4 caps checked, violators dropped whole, samples applied on arrival keeping `t_off`; no CLOCK | §17.1.1 | `stream` (only in images that declare one) |
+| 8 | **STATE push** at each channel's `max_rate_hz` (on change for 0), no SUBSCRIBE: the host is the implicit subscriber | §17.1.1 | `channels` |
+| 9 | **Accessory-status at `r = 0x01`**: `{state u8, fault u8, beacon_seq u16}`, on change and at least every `spoke_beacon_interval_ms` | §17.1.1, registry `accessory_status` | `safety` |
+| 10 | **Channel follow**: active scan on channels 1 to 13, one DISCOVER_PROBE per channel, `spoke_scan_dwell_ms` dwell, "my hub" by source address and `hub_instance_id`, retune to `wifi_channel` | §13.3.1 items 3, 4 | `scan` |
+| 11 | **Deadman and safe state**: the four doors, only BEACON refreshes, `safe` values held, verbs abandoned, the sticky exits, never self-restoring | §13.3.1 item 5 | `safety` |
+| 12 | **ESTOP**: a valid CRC-checked ESTOP from any source enters `safe_estop`; never rebroadcast | §13.3.1 items 5, 7 | `safety` |
+| 13 | **250 B budget**: every spoke frame fits one ESP-NOW v1 payload with its header; no §5.6 fragmentation | §13.3.1 item 1 | `link` |
+| 14 | **Reliability**: ACKMASK every 10 ms, stop-and-wait 3 x 100 ms for control frames, no retransmit of STATE or STREAM | §13.3, §13.3.1 item 6 | `link` |
+| 15 | **Durable `accessory_id`**: random u64 at first boot, persisted across reboots and firmware updates; the paired hub's `hub_instance_id` and address persisted | §8.10 | `identity` |
+| 16 | **Join**: pairing state by gesture or factory-fresh, JOIN_REQ once per matching BEACON until answered, rejoin on every reacquisition, every `join_results` value handled, safe after any join | §13.3.2 | `join` |
+
+**Absent by profile, never built:** HELLO/WELCOME and the rest of the
+session layer, the readiness gate, SUBSCRIBE/UNSUBSCRIBE/GRANT/PUBLISH,
+PROBE, CLOCK, access tiers, pairing tokens, AUTH, HUB_SIG, the trust ledger,
+every core channel, control ownership, multiple peers, BLE GATT, WebSocket,
+discovery, and the rendering annotations beyond what §8.10 requires
+(§17.1.1).
+
+**Modules, one line each.** `wire`: the Valence library's codec and
+generated constants, linked, not copied. `link`: the ESP-NOW peer, send gate
+and reliability layer. `scan`: probe, beacon match, retune. `join`: pairing
+state and the JOIN exchange. `identity`: the persisted ids. `declaration`:
+the baked catalog bytes and the blob server. `intent`: INTENT in, ECHO or
+NACK out. `channels`: the actuator and readout drivers, clamping and STATE
+pushes. `stream`: bundle intake. `safety`: the deadman clock, the safe-state
+machine and accessory-status.
