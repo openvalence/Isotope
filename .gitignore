@@ -8,3 +8,4 @@
 # Per-run output
 artifacts/
 
+.beads.gate.lock
