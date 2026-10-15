@@ -11,7 +11,7 @@
 ## 1. What Isotope is
 
 The accessory firmware of the Valence ecosystem. An Isotope device is a
-small ESP32-family board driving one accessory (a pump, a vibrator, a
+small ESP32-family board driving one accessory (a pump, a
 motorized stand) that joins ONE Valence hub (Nucleus) over ESP-NOW,
 declares its channels, obeys the hub, and fails safe on its own.
 
@@ -293,7 +293,7 @@ by the 256-entry client floor, not by the radio (Nucleus
 `0x8000`-`0xBFFF` holds 512 slices of `accessory_slice_ids` (32) ids:
 `r = 0x00` is the session-scoped channel BEACON, ACKMASK and GOODBYE ride,
 `r = 0x01` the registered accessory-status STATE, `r = 0x02`-`0x1F` the
-accessory's own. The accessory speaks relative ids and never learns its
+accessory's own. The accessory uses relative ids and never learns its
 slice; a slice is sticky across reboots and declaration replacement and is
 never reused after a forget (SPEC §8.10).
 

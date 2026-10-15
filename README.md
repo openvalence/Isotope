@@ -6,7 +6,7 @@
 > design cites the Valence spec or names the RFC that must land first.
 
 **Valence Isotope** is the firmware for Valence accessories: the small
-ESP32-family devices (a peristaltic pump, a vibrator, a motorized stand)
+ESP32-family devices (a peristaltic pump, a motorized stand)
 that join a Valence hub over ESP-NOW and appear in its catalog as ordinary
 channels. Same thing as the hub, small variation. An accessory is described
 by a declarative config, ESPHome-shaped; a generator turns that config into
