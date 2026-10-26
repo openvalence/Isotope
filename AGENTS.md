@@ -1,11 +1,28 @@
 # Agent Instructions
 
+This file is documentation, not policy: the Canon and the repo's rules files rule; a contradiction here is a defect here.
+
+| What | Where |
+|---|---|
+| The Canon (C-1..C-12, the Canon Flag, the amendment ritual) | `../Nucleus/.claude/rules/governance.md`, its one home; this repo has no copy |
+| `.claude/rules/governance.md` | the Canon pointer, Valence read-only, Isotope is an accessory |
+| Design rulings and open questions | `docs/DESIGN.md`; read it before proposing anything. What Isotope is: `README.md` |
+| Lint (zero findings is the bar) | none (no code yet) |
+| Board | `bd`, prefix `iso-` |
+| Formulas (workspace-root `.beads/formulas`, poured from inside this repo) | `rfc-lifecycle`: what Isotope needs from Valence is an RFC |
+
+Hub-side work (beacon, join, declaration store, relationships) lands in
+`../Nucleus` and is filed on its board, never coded from here. Use the Bash
+tool only, never the PowerShell tool: it opens terminal windows on the
+operator's screen. Commit messages carry no `Co-Authored-By` trailer for a
+model or assistant.
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 > **Architecture in one line:** Issues live in a local Dolt database
 > (`.beads/dolt/`); cross-machine sync uses `bd dolt push/pull` (a
 > git-compatible protocol), stored under `refs/dolt/data` on your git
-> remote — separate from `refs/heads/*` where your code lives.
+> remote, separate from `refs/heads/*` where your code lives.
 > `.beads/issues.jsonl` is a passive export, not the wire protocol.
 >
 > See [SYNC_CONCEPTS.md](https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md)
