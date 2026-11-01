@@ -5,6 +5,7 @@ This file is documentation, not policy: the Canon and the repo's rules files rul
 | What | Where |
 |---|---|
 | The Canon (C-1..C-12, the Canon Flag, the amendment ritual) | `../Nucleus/.claude/rules/governance.md`, its one home; this repo has no copy |
+| User-visible strings (log lines, catalog text, refusals, UI, site copy) | `../Nucleus/.claude/rules/strings.md`, the standard and the string pass (workspace skill `string-pass`); this repo has no copy |
 | `.claude/rules/governance.md` | the Canon pointer, Valence read-only, Isotope is an accessory |
 | Design rulings and open questions | `docs/DESIGN.md`; read it before proposing anything. What Isotope is: `README.md` |
 | Lint (zero findings is the bar) | none (no code yet) |
